@@ -93,3 +93,5 @@ After all 5 are green -> push to GitHub -> Day 1 done.
 - **Sole proprietor mode:** no Pvt Ltd or GSTIN required for V0. Razorpay individual KYC sufficient when payment integration is added (Day 8+).
 - **Cost:** All runtime services covered by Azure free credit + free tiers (Supabase-not-used; everything on Azure or Resend free).
 - **AI verdict cost per case:** ~₹15-25 in Azure OpenAI tokens; covered by your monthly credit.
+
+
