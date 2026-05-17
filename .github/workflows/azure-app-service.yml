@@ -32,7 +32,10 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Install dependencies
-        run: pnpm install --frozen-lockfile
+        # --config.node-linker=hoisted forces a flat node_modules tree (no .pnpm symlinks).
+        # Required so Next.js standalone tracer correctly bundles all transitive deps
+        # like @swc/helpers. Also belt-and-suspenders to the .npmrc.
+        run: pnpm install --frozen-lockfile --config.node-linker=hoisted
 
       - name: Build Next.js (standalone output)
         env:
@@ -58,14 +61,20 @@ jobs:
       - name: Assemble standalone deploy package
         # Next standalone output puts server.js in .next/standalone, but doesn't
         # copy the static assets or /public — we have to do it ourselves.
-        # We also ship a custom startup.sh that bypasses Azure's Oryx wrapper,
-        # which otherwise destroys the trimmed node_modules.
+        # We also ship:
+        #   - startup.sh: clean entrypoint when Startup Command is `bash startup.sh`
+        #   - node_modules.tar.gz: feeds Azure's default Oryx startup wrapper which
+        #     looks for this file and extracts it to /node_modules. Without it, that
+        #     wrapper wipes /node_modules and Next crashes with MODULE_NOT_FOUND on
+        #     @swc/helpers. Ship both so the app works under either startup command.
         run: |
           cp -r .next/static .next/standalone/.next/static
           if [ -d public ]; then cp -r public .next/standalone/public; fi
           cp package.json .next/standalone/package.json || true
           cp startup.sh .next/standalone/startup.sh
           chmod +x .next/standalone/startup.sh
+          cd .next/standalone
+          tar -czf node_modules.tar.gz node_modules
 
       - name: Zip deploy package
         run: |
