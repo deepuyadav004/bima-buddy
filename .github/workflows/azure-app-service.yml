@@ -37,6 +37,17 @@ jobs:
         # like @swc/helpers. Also belt-and-suspenders to the .npmrc.
         run: pnpm install --frozen-lockfile --config.node-linker=hoisted
 
+      - name: Diagnostic — verify @swc/helpers in node_modules
+        # Surfaces early if pnpm didn't actually hoist @swc/helpers to the root.
+        run: |
+          echo "=== node_modules/@swc/ ==="
+          ls -la node_modules/@swc/ 2>&1 || echo "MISSING at root"
+          echo "=== node_modules/.pnpm/@swc+helpers* ==="
+          ls -d node_modules/.pnpm/@swc+helpers* 2>&1 || echo "MISSING in .pnpm store"
+          echo "=== presence flags ==="
+          test -d node_modules/@swc/helpers && echo "ROOT: present" || echo "ROOT: missing"
+          test -d node_modules/next && echo "NEXT: present" || echo "NEXT: missing"
+
       - name: Build Next.js (standalone output)
         env:
           # These are needed at build time for static generation and metadataBase.
@@ -67,12 +78,22 @@ jobs:
         #     looks for this file and extracts it to /node_modules. Without it, that
         #     wrapper wipes /node_modules and Next crashes with MODULE_NOT_FOUND on
         #     @swc/helpers. Ship both so the app works under either startup command.
+        # BELT: also force-copy the full root node_modules into the deploy tarball,
+        # so even if Next's standalone tracer misses any transitive dep, runtime
+        # require() can still resolve it from the bundled deps.
         run: |
           cp -r .next/static .next/standalone/.next/static
           if [ -d public ]; then cp -r public .next/standalone/public; fi
           cp package.json .next/standalone/package.json || true
           cp startup.sh .next/standalone/startup.sh
           chmod +x .next/standalone/startup.sh
+          echo "=== standalone node_modules size BEFORE merge ==="
+          du -sh .next/standalone/node_modules 2>&1 || true
+          rsync -a --ignore-existing node_modules/ .next/standalone/node_modules/
+          echo "=== standalone node_modules size AFTER merge ==="
+          du -sh .next/standalone/node_modules 2>&1 || true
+          echo "=== @swc/helpers in standalone? ==="
+          test -d .next/standalone/node_modules/@swc/helpers && echo "YES" || echo "NO"
           cd .next/standalone
           tar -czf node_modules.tar.gz node_modules
 
