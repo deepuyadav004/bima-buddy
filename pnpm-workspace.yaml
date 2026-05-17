@@ -1,0 +1,10 @@
+packages:
+  - "."
+
+# pnpm 10+ moved native-build approvals from package.json `pnpm.onlyBuiltDependencies`
+# into this file. Keep these allowlisted so the install completes without prompting.
+allowBuilds:
+  esbuild: true
+  sharp: true
+  unrs-resolver: true
+  "@tailwindcss/oxide": true

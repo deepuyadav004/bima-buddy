@@ -8,7 +8,7 @@ on:
 env:
   AZURE_WEBAPP_NAME: bimabuddy
   NODE_VERSION: "22.x"
-  PNPM_VERSION: "9"
+  PNPM_VERSION: "11"
 
 jobs:
   build-and-deploy:
@@ -58,11 +58,14 @@ jobs:
       - name: Assemble standalone deploy package
         # Next standalone output puts server.js in .next/standalone, but doesn't
         # copy the static assets or /public — we have to do it ourselves.
+        # We also ship a custom startup.sh that bypasses Azure's Oryx wrapper,
+        # which otherwise destroys the trimmed node_modules.
         run: |
           cp -r .next/static .next/standalone/.next/static
           if [ -d public ]; then cp -r public .next/standalone/public; fi
-          # Ship package.json so App Service's startup probes have something to read.
           cp package.json .next/standalone/package.json || true
+          cp startup.sh .next/standalone/startup.sh
+          chmod +x .next/standalone/startup.sh
 
       - name: Zip deploy package
         run: |
