@@ -7,15 +7,16 @@ import {
   Lock,
   Flag,
   Upload,
-  CreditCard,
   Sparkles,
   Phone,
   Mail,
+  Scale,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Card,
   CardContent,
+  CardDescription,
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
@@ -27,30 +28,44 @@ import {
 } from "@/components/ui/accordion";
 import { auth } from "@/lib/auth";
 
+export const metadata = {
+  title: "Bima Buddy — AI Help for Rejected Health Insurance Claims (India)",
+  description:
+    "Honest AI verdict on your rejected health insurance claim in 60 seconds. ₹199 upfront, success fee capped at ₹5,000 — only on recovery. Independent, IRDAI Ombudsman expertise.",
+  alternates: { canonical: "/" },
+};
+
 const HOW_IT_WORKS = [
   {
     icon: Phone,
     step: "1",
-    title: "Sign up with WhatsApp",
-    body: "One tap. We use OTPless — no passwords, no SMS hassle.",
-  },
-  {
-    icon: CreditCard,
-    step: "2",
-    title: "Pay ₹199",
-    body: "Secure UPI / card. Non-refundable — covers your AI verdict.",
+    title: "Sign up with Google",
+    body: "One tap. No passwords. We use Google sign-in.",
   },
   {
     icon: Upload,
-    step: "3",
+    step: "2",
     title: "Upload your docs",
-    body: "Rejection letter, policy PDF, hospital bills. We do the rest.",
+    body: "Rejection letter, policy PDF, hospital bills. No payment yet.",
+  },
+  {
+    icon: Mail,
+    step: "3",
+    title: "Email us to pay ₹199",
+    body: "We send you a UPI / payment link. Once paid, AI takes over.",
   },
   {
     icon: Sparkles,
     step: "4",
     title: "Get verdict in 60 sec",
-    body: "Plain English. Honest answer. Win probability. Next steps.",
+    body: "Plain English. Win probability. Cited IRDAI rules. Next steps.",
+  },
+  {
+    icon: Scale,
+    step: "5",
+    title: "We fight for you (optional)",
+    body:
+      "If your verdict says we can win, we handle the dispute. Pay only if we recover money.",
   },
 ];
 
@@ -61,19 +76,23 @@ const INCLUDED = [
   "Win probability based on similar past cases",
   "Cited IRDAI clauses + case-law references",
   "Recommended next step",
-  "Free WhatsApp follow-up support for 7 days",
+  "Email follow-up support",
 ];
 
 const NOT_INCLUDED = [
   "Magic guarantees of recovery",
   "Refunds on ₹199 (it covers the AI cost)",
-  "Dispute filing — that's a separate service, paid only if we recover money",
+  "Independent dispute filing (we charge a separate success fee only if we recover money)",
 ];
 
 const FAQ = [
   {
-    q: "Why ₹199 — what am I paying for?",
-    a: "₹199 covers AI compute + our advisory review of your rejection. You get a written verdict telling you whether the rejection is fightable, the likely win probability, the exact IRDAI clauses to cite, and the recommended next step. Non-refundable because the AI work is done the moment you upload.",
+    q: "Why ₹199 — what am I paying for, and isn't ChatGPT free?",
+    a: "₹199 covers two things: (1) our India-specific AI verdict that cites real IRDAI regulations + case law, and (2) your slot if you want our team to fight the dispute later. The ₹199 is ALSO credited toward the success fee — so you're never charged twice. ChatGPT can give general advice but it can't file Bima Bharosa complaints, draft Ombudsman P-II forms, or track your case for months. That's what the ₹199 + success fee buys.",
+  },
+  {
+    q: "How does pricing work end-to-end?",
+    a: "Two parts. (1) ₹199 upfront, non-refundable — this is for the AI verdict and locks in your dispute slot. (2) IF we fight and recover money, success fee = 10% of recovered amount, CAPPED at ₹5,000. The ₹199 you already paid is CREDITED toward this. So you never pay more than ₹5,000 total, and if recovery is small, you pay nothing extra beyond the ₹199.",
   },
   {
     q: "What if the AI says my rejection is legitimate?",
@@ -92,16 +111,12 @@ const FAQ = [
     a: "Yes. Encrypted in transit and at rest on Azure. We never share your documents with the insurer or any third party. We don't sell data. You can request deletion any time.",
   },
   {
-    q: "What if I already complained to the insurer?",
-    a: "Even better. We can escalate to Bima Bharosa or the Insurance Ombudsman directly. Bring your previous correspondence — it strengthens the case.",
-  },
-  {
     q: "How do you make money?",
-    a: "₹199 per verdict + 10% success fee (capped ₹5,000) on recoveries. That's it. We take zero commission from insurers and never recommend specific policies for sale.",
+    a: "₹199 per AI verdict (covers our AI cost + admin) + success fee capped at ₹5k MINUS the ₹199 already paid, only when we recover money for you. We take zero commission from insurers and never recommend specific policies for sale.",
   },
   {
     q: "Who built this?",
-    a: "An independent founder operating in India as a sole proprietor. Bima Buddy is not affiliated with any insurance company, broker, or aggregator. Contact us anytime via WhatsApp or email — listed in the footer.",
+    a: "An independent founder operating in India as a sole proprietor. Bima Buddy is not affiliated with any insurance company, broker, or aggregator. Contact us anytime via the contact page.",
   },
 ];
 
@@ -212,9 +227,9 @@ export default async function HomePage() {
             <h2 className="text-3xl sm:text-4xl font-bold text-slate-900">
               How it works
             </h2>
-            <p className="mt-3 text-slate-600">Four steps. Sixty seconds.</p>
+            <p className="mt-3 text-slate-600">Five steps. Sixty seconds for the verdict.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-5">
             {HOW_IT_WORKS.map((step) => {
               const Icon = step.icon;
               return (
@@ -290,6 +305,104 @@ export default async function HomePage() {
         </div>
       </section>
 
+      {/* PRICING */}
+      <section className="py-16 sm:py-24">
+        <div className="mx-auto max-w-4xl px-4 sm:px-6">
+          <div className="text-center mb-12">
+            <h2 className="text-3xl sm:text-4xl font-bold text-slate-900">
+              Honest pricing
+            </h2>
+            <p className="mt-3 text-slate-600">
+              You pay once for the verdict. If we win your dispute, the ₹199
+              counts toward the success fee — never charged twice.
+            </p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <Card className="border-blue-200">
+              <CardHeader>
+                <div className="text-xs uppercase tracking-wide text-blue-700 font-semibold">
+                  Step 1
+                </div>
+                <CardTitle className="mt-2 text-3xl">
+                  ₹199{" "}
+                  <span className="text-base font-normal text-slate-500">
+                    one-time
+                  </span>
+                </CardTitle>
+                <CardDescription className="mt-2 text-base">
+                  AI verdict on your rejection.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-slate-700">
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    AI verdict in 60 seconds
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    Win probability + cited IRDAI rules
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    Plain-English next steps
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    Email support
+                  </li>
+                </ul>
+                <p className="mt-4 text-xs text-slate-500">
+                  Non-refundable — covers AI compute + advisory.
+                </p>
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <div className="text-xs uppercase tracking-wide text-slate-700 font-semibold">
+                  Step 2 — only if we win
+                </div>
+                <CardTitle className="mt-2 text-3xl">
+                  10%{" "}
+                  <span className="text-base font-normal text-slate-500">
+                    capped ₹5,000
+                  </span>
+                </CardTitle>
+                <CardDescription className="mt-2 text-base">
+                  Success fee on recovered amount.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <ul className="space-y-2 text-sm text-slate-700">
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    Bima Bharosa filing
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    GRO + Ombudsman letters
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    Case-tracking till resolution
+                  </li>
+                  <li className="flex items-start gap-2">
+                    <Check className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                    <span>
+                      <span className="font-semibold">₹199 already paid is credited.</span>{" "}
+                      Net cost stays at max ₹5,000.
+                    </span>
+                  </li>
+                </ul>
+                <p className="mt-4 text-xs text-slate-500">
+                  If we don&apos;t recover money, you pay nothing beyond ₹199.
+                </p>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
       {/* FAQ */}
       <section className="py-16 sm:py-24">
         <div className="mx-auto max-w-3xl px-4 sm:px-6">
@@ -354,22 +467,17 @@ export default async function HomePage() {
                 <li className="flex items-center gap-2">
                   <Mail className="h-4 w-4" />
                   <a
-                    href="mailto:help@bimabuddy.in"
+                    href={`mailto:${process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "help@bimabuddy.in"}`}
                     className="hover:text-blue-600"
                   >
-                    help@bimabuddy.in
+                    {process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "help@bimabuddy.in"}
                   </a>
                 </li>
                 <li className="flex items-center gap-2">
                   <Phone className="h-4 w-4" />
-                  <a
-                    href="https://wa.me/91XXXXXXXXXX"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="hover:text-blue-600"
-                  >
-                    WhatsApp us
-                  </a>
+                  <Link href="/contact" className="hover:text-blue-600">
+                    Contact us
+                  </Link>
                 </li>
               </ul>
             </div>

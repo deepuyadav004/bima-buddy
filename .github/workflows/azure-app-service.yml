@@ -1,0 +1,86 @@
+name: Deploy to Azure App Service
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch: {}
+
+env:
+  AZURE_WEBAPP_NAME: bimabuddy
+  NODE_VERSION: "20.x"
+  PNPM_VERSION: "9"
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    concurrency:
+      group: deploy-${{ github.ref }}
+      cancel-in-progress: false
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Next.js (standalone output)
+        env:
+          # These are needed at build time for static generation and metadataBase.
+          # Provide harmless dummies; real secrets come from App Service settings at runtime.
+          NEXT_PUBLIC_SITE_URL: ${{ secrets.NEXT_PUBLIC_SITE_URL }}
+          NEXT_PUBLIC_SUPPORT_EMAIL: ${{ secrets.NEXT_PUBLIC_SUPPORT_EMAIL }}
+          # Some libs (e.g. lib/blob.ts, lib/db) throw if env is missing at import time.
+          # Build-time placeholders unblock static analysis; runtime values come from Azure.
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          AZURE_OPENAI_ENDPOINT: ${{ secrets.AZURE_OPENAI_ENDPOINT }}
+          AZURE_OPENAI_KEY: ${{ secrets.AZURE_OPENAI_KEY }}
+          AZURE_OPENAI_DEPLOYMENT: gpt-4o
+          AZURE_OPENAI_API_VERSION: 2024-04-01-preview
+          NEXTAUTH_SECRET: ${{ secrets.NEXTAUTH_SECRET }}
+          NEXTAUTH_URL: ${{ secrets.NEXTAUTH_URL }}
+          AUTH_TRUST_HOST: "true"
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+        run: pnpm build
+
+      - name: Assemble standalone deploy package
+        # Next standalone output puts server.js in .next/standalone, but doesn't
+        # copy the static assets or /public — we have to do it ourselves.
+        run: |
+          cp -r .next/static .next/standalone/.next/static
+          if [ -d public ]; then cp -r public .next/standalone/public; fi
+          # Ship package.json so App Service's startup probes have something to read.
+          cp package.json .next/standalone/package.json || true
+
+      - name: Zip deploy package
+        run: |
+          cd .next/standalone
+          zip -r ../../deploy.zip . -x "*.git*" "node_modules/.cache/*"
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Deploy to Azure App Service
+        uses: azure/webapps-deploy@v3
+        with:
+          app-name: ${{ env.AZURE_WEBAPP_NAME }}
+          package: deploy.zip
+
+      - name: Azure logout
+        if: always()
+        run: az logout

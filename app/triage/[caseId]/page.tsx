@@ -3,17 +3,20 @@ import Link from "next/link";
 import {
   Shield,
   ArrowLeft,
-  Clock,
   CheckCircle2,
   AlertTriangle,
-  Construction,
   CreditCard,
   FileText,
+  Loader2,
+  XCircle,
+  Clock,
+  Download,
 } from "lucide-react";
 import { eq, and } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cases } from "@/lib/db/schema";
+import { getReadSasUrl } from "@/lib/blob";
 import {
   Card,
   CardContent,
@@ -23,8 +26,26 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { SignOutButton } from "@/components/auth-buttons";
+import { VerdictCard } from "@/components/verdict-card";
+import { CasePoller } from "@/components/case-poller";
+import { MarkPaidButton, ReTriggerAiButton } from "./admin-actions";
+import type { Verdict } from "@/lib/triage";
+import { VerdictSchema } from "@/lib/triage";
+import { formatExpiryLabel, isExpired } from "@/lib/case-status";
 
 export const dynamic = "force-dynamic";
+
+interface VerdictWrapper {
+  verdict?: unknown;
+  error?: string;
+  failedAt?: string;
+  meta?: {
+    modelDeployment?: string;
+    promptVersion?: string;
+    elapsedMs?: number;
+    generatedAt?: string;
+  };
+}
 
 export default async function CaseDetailPage({
   params,
@@ -52,8 +73,30 @@ export default async function CaseDetailPage({
     notFound();
   }
 
+  let verdict: Verdict | null = null;
+  let aiError: string | null = null;
+  const verdictWrapper = caseRow.verdictJson as VerdictWrapper | null;
+
+  if (caseRow.aiStatus === "done" && verdictWrapper?.verdict) {
+    const parsed = VerdictSchema.safeParse(verdictWrapper.verdict);
+    if (parsed.success) {
+      verdict = parsed.data;
+    } else {
+      aiError = "Verdict format invalid — please re-run AI.";
+    }
+  }
+
+  if (caseRow.aiStatus === "failed") {
+    aiError = verdictWrapper?.error ?? "AI processing failed.";
+  }
+
+  const showPoller =
+    caseRow.aiStatus === "processing" || caseRow.aiStatus === "pending";
+
   return (
     <main className="min-h-screen bg-slate-50">
+      {showPoller && caseRow.paymentStatus === "paid" && <CasePoller />}
+
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white">
         <div className="mx-auto max-w-3xl px-4 sm:px-6 py-3 flex items-center justify-between">
           <Link
@@ -75,19 +118,14 @@ export default async function CaseDetailPage({
           </Link>
         </Button>
 
-        {/* Case overview */}
         <Card>
           <CardHeader>
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <CardTitle>{caseRow.insurer}</CardTitle>
-                <CardDescription className="mt-1">
-                  ₹{Number(caseRow.claimAmount).toLocaleString("en-IN")} · Rejected on{" "}
-                  {caseRow.rejectionDate} ·{" "}
-                  <span className="capitalize">{caseRow.claimType}</span>
-                </CardDescription>
-              </div>
-            </div>
+            <CardTitle>{caseRow.insurer}</CardTitle>
+            <CardDescription className="mt-1">
+              ₹{Number(caseRow.claimAmount).toLocaleString("en-IN")} · Rejected on{" "}
+              {caseRow.rejectionDate} ·{" "}
+              <span className="capitalize">{caseRow.claimType}</span>
+            </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -95,7 +133,7 @@ export default async function CaseDetailPage({
                 <div className="text-slate-500 text-xs uppercase tracking-wide">
                   Payment
                 </div>
-                <div className="mt-1 font-medium capitalize">
+                <div className="mt-1 font-medium">
                   {caseRow.paymentStatus === "paid" ? (
                     <span className="inline-flex items-center gap-1 text-green-700">
                       <CheckCircle2 className="h-4 w-4" /> Paid
@@ -112,37 +150,35 @@ export default async function CaseDetailPage({
                   AI verdict
                 </div>
                 <div className="mt-1 font-medium capitalize">
-                  {caseRow.aiStatus === "done" ? (
-                    <span className="text-green-700">Ready</span>
-                  ) : caseRow.aiStatus === "processing" ? (
-                    <span className="inline-flex items-center gap-1 text-blue-700">
-                      <Clock className="h-4 w-4" /> Processing
-                    </span>
-                  ) : (
-                    <span className="text-slate-600">{caseRow.aiStatus}</span>
-                  )}
+                  <AiStatusPill status={caseRow.aiStatus} />
                 </div>
-              </div>
-            </div>
-            <div className="mt-4 pt-4 border-t border-slate-100 text-xs text-slate-500 space-y-1">
-              <div className="flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Rejection letter: {caseRow.rejectionDocPath ? "✓" : "—"}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Policy: {caseRow.policyDocPath ? "✓" : "—"}
-              </div>
-              <div className="flex items-center gap-1.5">
-                <FileText className="h-3.5 w-3.5" />
-                Bills: {caseRow.billsDocPath ? "✓" : "— (optional)"}
               </div>
             </div>
           </CardContent>
         </Card>
 
-        {/* Payment / next-step card */}
-        {caseRow.paymentStatus === "unpaid" && (
+        {/* Documents */}
+        <DocumentsCard
+          docs={[
+            {
+              label: "Rejection letter",
+              path: caseRow.rejectionDocPath,
+              required: true,
+            },
+            {
+              label: "Policy document",
+              path: caseRow.policyDocPath,
+              required: true,
+            },
+            {
+              label: "Hospital bills",
+              path: caseRow.billsDocPath,
+              required: false,
+            },
+          ]}
+        />
+
+        {caseRow.paymentStatus === "unpaid" && !isExpired(caseRow.expiresAt) && (
           <Card>
             <CardHeader>
               <div className="flex items-center gap-3">
@@ -152,53 +188,111 @@ export default async function CaseDetailPage({
                 <div>
                   <CardTitle>Awaiting payment</CardTitle>
                   <CardDescription className="mt-1">
-                    Razorpay integration arriving Day 4+. For now, message us
-                    on WhatsApp with your case ID and we&apos;ll send a payment
-                    link.
+                    Email us for more information, payment, or any service
+                    related questions. We&apos;ll get back to you within 24
+                    hours.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
             <CardContent>
-              <div className="rounded-md bg-slate-50 border border-slate-200 p-3 text-xs">
-                <div className="text-slate-500 uppercase tracking-wide">
-                  Case ID
+              <Button asChild className="w-full" size="lg">
+                <Link href={`/contact?caseId=${caseRow.id}`}>
+                  Contact us to proceed
+                </Link>
+              </Button>
+              <p className="mt-3 text-xs text-slate-500 text-center">
+                {formatExpiryLabel(caseRow.expiresAt)} · After expiry,
+                you&apos;ll need to start a fresh triage.
+              </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {isExpired(caseRow.expiresAt) && caseRow.paymentStatus === "unpaid" && (
+          <Card className="border-slate-300 bg-slate-100/40">
+            <CardHeader>
+              <div className="flex items-center gap-3">
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-slate-200 text-slate-700">
+                  <Clock className="h-5 w-5" />
                 </div>
-                <div className="font-mono mt-1 text-slate-900 break-all">
-                  {caseRow.id}
+                <div>
+                  <CardTitle className="text-slate-800">
+                    This case has expired
+                  </CardTitle>
+                  <CardDescription className="mt-1">
+                    Unpaid cases expire 30 days after submission. The documents
+                    you uploaded are no longer eligible for processing.
+                  </CardDescription>
                 </div>
               </div>
-              <Button asChild className="w-full mt-3" size="lg">
-                <a
-                  href={`https://wa.me/91XXXXXXXXXX?text=${encodeURIComponent(
-                    `Hi, I want to pay ₹199 for case ${caseRow.id}.`
-                  )}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  WhatsApp us to pay ₹199
-                </a>
+            </CardHeader>
+            <CardContent>
+              <Button asChild className="w-full" size="lg">
+                <Link href="/triage">Start a fresh triage</Link>
               </Button>
             </CardContent>
           </Card>
         )}
 
-        {caseRow.paymentStatus === "paid" && caseRow.aiStatus === "pending" && (
-          <Card>
+        {caseRow.paymentStatus === "paid" &&
+          (caseRow.aiStatus === "pending" ||
+            caseRow.aiStatus === "processing") && (
+            <Card className="border-blue-200 bg-blue-50/40">
+              <CardHeader>
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
+                    <Loader2 className="h-5 w-5 animate-spin" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-blue-900">
+                      AI is analyzing your case
+                    </CardTitle>
+                    <CardDescription className="mt-1">
+                      This usually takes 30-90 seconds. We&apos;re reading your
+                      policy and rejection letter, then writing the verdict.
+                    </CardDescription>
+                  </div>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <p className="text-xs text-slate-500">
+                  This page auto-refreshes. You can close it and come back any
+                  time — your verdict will be saved here once it&apos;s ready.
+                </p>
+              </CardContent>
+            </Card>
+          )}
+
+        {verdict && <VerdictCard verdict={verdict} />}
+
+        {caseRow.aiStatus === "failed" && aiError && (
+          <Card className="border-red-200 bg-red-50/40">
             <CardHeader>
               <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-blue-100 text-blue-700">
-                  <Construction className="h-5 w-5" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-red-100 text-red-700">
+                  <XCircle className="h-5 w-5" />
                 </div>
                 <div>
-                  <CardTitle>AI verdict coming Day 4</CardTitle>
+                  <CardTitle className="text-red-900">
+                    AI couldn&apos;t generate verdict
+                  </CardTitle>
                   <CardDescription className="mt-1">
-                    Payment confirmed. We&apos;ll process your case as soon as
-                    the AI triage pipeline ships.
+                    Don&apos;t worry — we&apos;ve been notified and will review
+                    your case manually. Email us if you don&apos;t hear back
+                    within 24 hours.
                   </CardDescription>
                 </div>
               </div>
             </CardHeader>
+            {session.user.isAdmin && (
+              <CardContent>
+                <div className="rounded-md bg-red-100/50 border border-red-200 p-3 text-xs font-mono text-red-900 mb-3 break-all">
+                  {aiError}
+                </div>
+                <ReTriggerAiButton caseId={caseRow.id} />
+              </CardContent>
+            )}
           </Card>
         )}
 
@@ -208,12 +302,29 @@ export default async function CaseDetailPage({
               <CardTitle className="text-sm text-slate-600">
                 Admin actions
               </CardTitle>
+              <CardDescription className="text-xs">
+                Visible to admins only.
+              </CardDescription>
             </CardHeader>
-            <CardContent>
-              <AdminPayButton
-                caseId={caseRow.id}
-                currentStatus={caseRow.paymentStatus}
-              />
+            <CardContent className="space-y-2">
+              {caseRow.paymentStatus === "unpaid" ? (
+                <MarkPaidButton caseId={caseRow.id} />
+              ) : (
+                <div className="text-xs text-slate-600">
+                  Payment status: <span className="font-medium">paid</span>
+                </div>
+              )}
+              {caseRow.paymentStatus === "paid" && (
+                <ReTriggerAiButton caseId={caseRow.id} />
+              )}
+              {verdictWrapper?.meta && (
+                <div className="text-xs text-slate-500 pt-2 border-t border-slate-100 mt-3">
+                  Model: {verdictWrapper.meta.modelDeployment} · Prompt:{" "}
+                  {verdictWrapper.meta.promptVersion} · Took:{" "}
+                  {verdictWrapper.meta.elapsedMs}ms ·{" "}
+                  {verdictWrapper.meta.generatedAt}
+                </div>
+              )}
             </CardContent>
           </Card>
         )}
@@ -222,35 +333,90 @@ export default async function CaseDetailPage({
   );
 }
 
-// Client-island button for the admin "mark as paid" action
-function AdminPayButton({
-  caseId,
-  currentStatus,
-}: {
-  caseId: string;
-  currentStatus: string;
-}) {
-  if (currentStatus === "paid") {
-    return (
-      <div className="text-sm text-slate-600">
-        Already marked paid.
-      </div>
-    );
+function AiStatusPill({ status }: { status: string }) {
+  switch (status) {
+    case "pending":
+      return <span className="text-slate-600">Pending</span>;
+    case "processing":
+      return (
+        <span className="inline-flex items-center gap-1 text-blue-700">
+          <Loader2 className="h-4 w-4 animate-spin" /> Processing
+        </span>
+      );
+    case "done":
+      return (
+        <span className="inline-flex items-center gap-1 text-green-700">
+          <CheckCircle2 className="h-4 w-4" /> Verdict ready
+        </span>
+      );
+    case "failed":
+      return (
+        <span className="inline-flex items-center gap-1 text-red-700">
+          <XCircle className="h-4 w-4" /> Failed
+        </span>
+      );
+    default:
+      return <span className="text-slate-600">{status}</span>;
   }
-  return <MarkPaidButton caseId={caseId} />;
 }
 
-// Tiny client component for the action
-function MarkPaidButton({ caseId }: { caseId: string }) {
+function DocumentsCard({
+  docs,
+}: {
+  docs: { label: string; path: string | null; required: boolean }[];
+}) {
+  const hasAny = docs.some((d) => d.path);
+  if (!hasAny) return null;
   return (
-    <form
-      action={`/api/cases/${caseId}/pay`}
-      method="post"
-      onSubmit={() => {}}
-    >
-      <Button type="submit" variant="outline" size="sm">
-        Mark as paid
-      </Button>
-    </form>
+    <Card>
+      <CardHeader>
+        <CardTitle className="text-base">Uploaded documents</CardTitle>
+        <CardDescription className="text-xs">
+          Download links expire after 60 minutes. Refresh the page to renew.
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {docs.map((d) => {
+          if (!d.path) {
+            return (
+              <div
+                key={d.label}
+                className="flex items-center justify-between gap-3 rounded-md border border-dashed border-slate-200 px-3 py-2 text-xs text-slate-500"
+              >
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-slate-400" />
+                  <span>{d.label}</span>
+                </div>
+                <span>{d.required ? "Not uploaded" : "Not uploaded (optional)"}</span>
+              </div>
+            );
+          }
+          const url = getReadSasUrl(d.path, 60);
+          const filename = d.path.split("/").pop() ?? d.label;
+          return (
+            <a
+              key={d.label}
+              href={url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-between gap-3 rounded-md border border-slate-200 px-3 py-2 hover:border-blue-300 hover:bg-blue-50/40 transition-colors group"
+            >
+              <div className="flex items-center gap-2 min-w-0">
+                <FileText className="h-4 w-4 text-blue-600 shrink-0" />
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-slate-900">
+                    {d.label}
+                  </div>
+                  <div className="text-[11px] text-slate-500 truncate">
+                    {filename}
+                  </div>
+                </div>
+              </div>
+              <Download className="h-4 w-4 text-slate-400 group-hover:text-blue-600 shrink-0" />
+            </a>
+          );
+        })}
+      </CardContent>
+    </Card>
   );
 }

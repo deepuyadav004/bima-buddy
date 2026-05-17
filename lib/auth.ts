@@ -27,15 +27,25 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // On sign-in, copy DB fields onto the token
         token.id = user.id;
       }
-      // On every request, refresh phone + isAdmin in case they changed
+      // On every request, refresh phone + isAdmin in case they changed.
+      // Wrap in try/catch so a transient DB hiccup doesn't tank the whole session.
       if (token.id) {
-        const dbUser = await db.query.users.findFirst({
-          where: eq(users.id, token.id as string),
-          columns: { phone: true, isAdmin: true },
-        });
-        if (dbUser) {
-          token.phone = dbUser.phone;
-          token.isAdmin = dbUser.isAdmin;
+        try {
+          const dbUser = await db.query.users.findFirst({
+            where: eq(users.id, token.id as string),
+            columns: { phone: true, isAdmin: true },
+          });
+          if (dbUser) {
+            token.phone = dbUser.phone;
+            token.isAdmin = dbUser.isAdmin;
+          }
+        } catch (err) {
+          // DB unreachable — keep using whatever phone/isAdmin we already have on the token.
+          // This avoids breaking the entire auth flow when Postgres has a hiccup.
+          console.warn(
+            "[auth.jwt] DB lookup failed, using cached token values:",
+            err instanceof Error ? err.message : err
+          );
         }
       }
       return token;

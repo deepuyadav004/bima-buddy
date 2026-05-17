@@ -10,7 +10,7 @@ import {
   integer,
   primaryKey,
 } from "drizzle-orm/pg-core";
-import { relations } from "drizzle-orm";
+import { relations, sql } from "drizzle-orm";
 import type { AdapterAccountType } from "next-auth/adapters";
 
 // ============================================================
@@ -98,6 +98,9 @@ export const cases = pgTable("cases", {
   verdictJson: jsonb("verdict_json"),
   disputeStatus: text("dispute_status"),
   amountRecovered: numeric("amount_recovered"),
+  expiresAt: timestamp("expires_at", { withTimezone: true })
+    .notNull()
+    .default(sql`(now() + interval '30 days')`),
   createdAt: timestamp("created_at", { withTimezone: true })
     .defaultNow()
     .notNull(),

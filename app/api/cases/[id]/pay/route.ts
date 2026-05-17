@@ -3,12 +3,15 @@ import { eq } from "drizzle-orm";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { cases } from "@/lib/db/schema";
+import { processCase } from "@/lib/triage";
+import { isExpired } from "@/lib/case-status";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 300;
 
 // ============================================================
-// POST /api/cases/[id]/pay — admin marks a case as paid (V0 manual payment)
+// POST /api/cases/[id]/pay — admin marks case as paid + kicks off AI triage
 // ============================================================
 export async function POST(
   _req: Request,
@@ -21,6 +24,22 @@ export async function POST(
 
   const { id } = await ctx.params;
 
+  // Block payment on expired cases
+  const [existing] = await db
+    .select({ expiresAt: cases.expiresAt })
+    .from(cases)
+    .where(eq(cases.id, id))
+    .limit(1);
+  if (!existing) {
+    return NextResponse.json({ error: "Case not found" }, { status: 404 });
+  }
+  if (isExpired(existing.expiresAt)) {
+    return NextResponse.json(
+      { error: "Case has expired (30-day window). User must submit a fresh triage." },
+      { status: 410 }
+    );
+  }
+
   const [updated] = await db
     .update(cases)
     .set({ paymentStatus: "paid", updatedAt: new Date() })
@@ -31,10 +50,10 @@ export async function POST(
       aiStatus: cases.aiStatus,
     });
 
-  if (!updated) {
-    return NextResponse.json({ error: "Case not found" }, { status: 404 });
-  }
+  // Kick off triage in background — don't await
+  processCase({ caseId: id }).catch((err) => {
+    console.error(`[pay] triage failed for case=${id}:`, err);
+  });
 
-  // TODO Day 4: trigger AI triage processing here
   return NextResponse.json({ ok: true, case: updated });
 }
