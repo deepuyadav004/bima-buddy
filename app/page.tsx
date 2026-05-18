@@ -120,6 +120,16 @@ const FAQ = [
   },
 ];
 
+const faqJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "FAQPage",
+  mainEntity: FAQ.map((item) => ({
+    "@type": "Question",
+    name: item.q,
+    acceptedAnswer: { "@type": "Answer", text: item.a },
+  })),
+};
+
 export default async function HomePage() {
   const session = await auth();
   const isLoggedIn = !!session?.user;
@@ -127,6 +137,10 @@ export default async function HomePage() {
 
   return (
     <main className="min-h-screen flex flex-col">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqJsonLd) }}
+      />
       {/* HEADER */}
       <header className="sticky top-0 z-50 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 sm:px-6 py-3 flex items-center justify-between">

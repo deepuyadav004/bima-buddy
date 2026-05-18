@@ -69,6 +69,46 @@ export const metadata: Metadata = {
   icons: {
     icon: "/favicon.ico",
   },
+  verification: {
+    google: "Koat9IkMj3Xvf27RiPZq4x3u5pi608iPhQsEnmB3zt4",
+  },
+};
+
+// JSON-LD structured data — surfaces rich results in Google (Organization +
+// LocalBusiness/Service info). Rendered in the root layout's <head>.
+const organizationJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  name: "Bima Buddy",
+  url: siteUrl,
+  logo: `${siteUrl}/favicon.ico`,
+  description:
+    "Independent AI-powered service that helps Indians fight wrongly-rejected health insurance claims. Honest AI verdict in 60 seconds, success-fee-on-recovery dispute filing.",
+  areaServed: { "@type": "Country", name: "India" },
+  contactPoint: {
+    "@type": "ContactPoint",
+    email: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "help@bimabuddy.in",
+    contactType: "customer support",
+    availableLanguage: ["English", "Hindi"],
+  },
+};
+
+const serviceJsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Service",
+  serviceType: "Insurance claim dispute advisory",
+  provider: { "@type": "Organization", name: "Bima Buddy", url: siteUrl },
+  areaServed: { "@type": "Country", name: "India" },
+  description:
+    "AI verdict on rejected health insurance claims plus end-to-end dispute filing at IRDAI Bima Bharosa portal and Insurance Ombudsman.",
+  offers: {
+    "@type": "Offer",
+    name: "AI verdict",
+    price: "199",
+    priceCurrency: "INR",
+    availability: "https://schema.org/InStock",
+    url: `${siteUrl}/login`,
+  },
 };
 
 export default function RootLayout({
@@ -78,6 +118,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${inter.variable} h-full antialiased`}>
+      <head>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(organizationJsonLd),
+          }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(serviceJsonLd) }}
+        />
+      </head>
       <body className="min-h-full bg-white text-slate-900 flex flex-col">
         <AuthSessionProvider>{children}</AuthSessionProvider>
         <Toaster />
